@@ -34,3 +34,4 @@ amanda_*
 artifacts/
 build/
 pages/
+.DS_Store

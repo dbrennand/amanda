@@ -15,6 +15,7 @@ import (
 	"github.com/gin-contrib/location"
 	"github.com/gin-gonic/gin"
 
+	"github.com/sivel/amanda/galaxy"
 	"github.com/sivel/amanda/handlers"
 	"github.com/sivel/amanda/storage"
 	"github.com/sivel/amanda/utils"
@@ -43,6 +44,8 @@ func main() {
 	var xattrs bool
 	var publish bool
 	var maxPublish int64
+	var galaxyProxy bool
+	var galaxyHost string
 	var version bool
 	var err error
 
@@ -53,6 +56,8 @@ func main() {
 	flag.BoolVar(&xattrs, "xattrs", false, "Enable caching metadata on xattrs for faster startup")
 	flag.BoolVar(&publish, "publish", false, "Enable publishing routes")
 	flag.Int64Var(&maxPublish, "max-publish", 20<<20, "Max publish size in bytes")
+	flag.BoolVar(&galaxyProxy, "galaxy-proxy", false, "Enable Galaxy proxy functionality")
+	flag.StringVar(&galaxyHost, "galaxy-host", "https://galaxy.ansible.com", "Upstream Galaxy server URL")
 	flag.BoolVar(&version, "V", false, "Print version information and exit")
 	flag.Parse()
 
@@ -68,7 +73,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	amanda := handlers.New(relative, storage.New(artifacts, xattrs))
+	s := storage.New(artifacts, xattrs)
+
+	var g *galaxy.Galaxy
+	if galaxyProxy {
+		log.Printf("Galaxy proxy enabled, upstream: %s", galaxyHost)
+		g = galaxy.New(galaxyHost, s)
+	}
+
+	amanda := handlers.New(relative, s, g)
 
 	r := gin.Default()
 	r.MaxMultipartMemory = maxPublish

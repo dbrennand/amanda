@@ -5,6 +5,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	"github.com/gin-contrib/location"
 	"github.com/gin-gonic/gin"
 
+	"github.com/sivel/amanda/galaxy"
 	"github.com/sivel/amanda/models"
 	"github.com/sivel/amanda/storage"
 	"github.com/sivel/amanda/utils"
@@ -27,13 +29,15 @@ var NotFound = gin.H{
 type Amanda struct {
 	relative     bool
 	storage      *storage.Storage
+	galaxy       *galaxy.Galaxy
 	publishMutex sync.Mutex
 }
 
-func New(relative bool, storage *storage.Storage) *Amanda {
+func New(relative bool, storage *storage.Storage, galaxy *galaxy.Galaxy) *Amanda {
 	return &Amanda{
 		relative: relative,
 		storage:  storage,
+		galaxy:   galaxy,
 	}
 }
 
@@ -67,6 +71,17 @@ func (a *Amanda) importTaskURL(c *gin.Context, task string) string {
 }
 
 func (a *Amanda) readOrAbort(c *gin.Context, namespace, name, version string) ([]*models.Collection, bool) {
+	if a.galaxy != nil {
+		if err := a.galaxy.Fetch(namespace, name, version); err != nil {
+			if errors.Is(err, galaxy.ErrNotFound) {
+				a.NotFound(c)
+			} else {
+				c.AbortWithError(http.StatusInternalServerError, err)
+			}
+			return nil, false
+		}
+	}
+
 	discovered, err := a.storage.Read(namespace, name, version)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)

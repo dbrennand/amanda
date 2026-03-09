@@ -7,7 +7,7 @@ GO_VERSION := $(shell go version | awk '{print $$3}')
 
 SRC        := $(shell find . -type f -name '*.go') go.mod go.sum index.html
 
-.PHONY: build clean
+.PHONY: build clean docker
 
 $(APP): $(SRC)
 	@mkdir -p build
@@ -18,6 +18,9 @@ endif
 	GOOS=$(GOOS) GOARCH=$(GOARCH) ln -sf "build/$(APP)_$(GOOS)_$(GOARCH)" $(APP)
 
 build: $(APP)
+
+docker: $(APP)
+	docker build --build-arg TARGETARCH=$(GOARCH) -t $(APP) .
 
 clean:
 	rm -rf build/
