@@ -81,7 +81,7 @@ func main() {
 		g = galaxy.New(galaxyHost, s)
 	}
 
-	amanda := handlers.New(relative, s, g)
+	amanda := handlers.New(relative, artifacts, s, g)
 
 	r := gin.Default()
 	r.MaxMultipartMemory = maxPublish
@@ -96,7 +96,7 @@ func main() {
 	r.GET("/api/v3/collections/:namespace/:name/", amanda.Collection)
 	r.GET("/api/v3/collections/:namespace/:name/versions/", amanda.Versions)
 	r.GET("/api/v3/collections/:namespace/:name/versions/:version/", amanda.Version)
-	r.Static("/artifacts", artifacts)
+	r.GET("/artifacts/:filename", amanda.Artifact)
 
 	if publish {
 		r.POST("/api/v3/artifacts/collections/", amanda.Publish)

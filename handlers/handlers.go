@@ -8,7 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,16 +31,18 @@ var NotFound = gin.H{
 
 type Amanda struct {
 	relative     bool
+	artifacts    string
 	storage      *storage.Storage
 	galaxy       *galaxy.Galaxy
 	publishMutex sync.Mutex
 }
 
-func New(relative bool, storage *storage.Storage, galaxy *galaxy.Galaxy) *Amanda {
+func New(relative bool, artifacts string, storage *storage.Storage, galaxy *galaxy.Galaxy) *Amanda {
 	return &Amanda{
-		relative: relative,
-		storage:  storage,
-		galaxy:   galaxy,
+		relative:  relative,
+		artifacts: artifacts,
+		storage:   storage,
+		galaxy:    galaxy,
 	}
 }
 
@@ -136,6 +141,40 @@ func sortVersions(versions []*models.Collection) {
 
 func (a *Amanda) NotFound(c *gin.Context) {
 	c.JSON(http.StatusNotFound, NotFound)
+}
+
+func (a *Amanda) Artifact(c *gin.Context) {
+	filename := c.Params.ByName("filename")
+	path := filepath.Join(a.artifacts, filename)
+
+	if _, err := os.Stat(path); err == nil {
+		c.File(path)
+		return
+	}
+
+	if a.galaxy == nil {
+		a.NotFound(c)
+		return
+	}
+
+	base := strings.TrimSuffix(filename, ".tar.gz")
+	parts := strings.SplitN(base, "-", 3)
+	if len(parts) != 3 {
+		a.NotFound(c)
+		return
+	}
+
+	namespace, name, version := parts[0], parts[1], parts[2]
+	if err := a.galaxy.Fetch(namespace, name, version); err != nil {
+		if errors.Is(err, galaxy.ErrNotFound) {
+			a.NotFound(c)
+		} else {
+			c.AbortWithError(http.StatusInternalServerError, err)
+		}
+		return
+	}
+
+	c.File(path)
 }
 
 func (a *Amanda) IndexHTML(content []byte) func(c *gin.Context) {
