@@ -32,6 +32,15 @@ type upstreamVersion struct {
 	} `json:"artifact"`
 }
 
+type upstreamVersionsPage struct {
+	Data []struct {
+		Version string `json:"version"`
+	} `json:"data"`
+	Links struct {
+		Next string `json:"next"`
+	} `json:"links"`
+}
+
 type inflight struct {
 	once sync.Once
 	err  error
@@ -66,6 +75,13 @@ func (g *Galaxy) versionURL(namespace, name, version string) string {
 	)
 }
 
+func (g *Galaxy) versionsListURL(namespace, name string) string {
+	return fmt.Sprintf(
+		"%s/api/v3/plugin/ansible/content/published/collections/index/%s/%s/versions/",
+		g.host, namespace, name,
+	)
+}
+
 func (g *Galaxy) get(url string, target interface{}) error {
 	resp, err := g.client.Get(url)
 	if err != nil {
@@ -87,28 +103,52 @@ func (g *Galaxy) filename(namespace, name, version string) string {
 	return fmt.Sprintf("%s-%s-%s.tar.gz", namespace, name, version)
 }
 
+func (g *Galaxy) LatestVersion(namespace, name string) (string, error) {
+	var col upstreamCollection
+	if err := g.get(g.collectionURL(namespace, name), &col); err != nil {
+		return "", err
+	}
+	if col.HighestVersion.Version == "" {
+		return "", ErrNotFound
+	}
+	return col.HighestVersion.Version, nil
+}
+
+func (g *Galaxy) ListVersions(namespace, name string) ([]string, error) {
+	url := g.versionsListURL(namespace, name)
+	var versions []string
+	for url != "" {
+		var page upstreamVersionsPage
+		if err := g.get(url, &page); err != nil {
+			return nil, err
+		}
+		for _, v := range page.Data {
+			versions = append(versions, v.Version)
+		}
+		url = page.Links.Next
+		if url != "" && url[0] == '/' {
+			url = g.host + url
+		}
+	}
+	return versions, nil
+}
+
 func (g *Galaxy) Fetch(namespace, name, version string) error {
 	if version != "" {
-		// Specific version: check cache first
 		if g.storage.Exists(g.filename(namespace, name, version)) {
 			log.Printf("galaxy: %s.%s:%s already cached", namespace, name, version)
 			return nil
 		}
-	}
-
-	// Resolve version if needed
-	var col upstreamCollection
-	if err := g.get(g.collectionURL(namespace, name), &col); err != nil {
-		return err
-	}
-
-	if version == "" {
+	} else {
+		var col upstreamCollection
+		if err := g.get(g.collectionURL(namespace, name), &col); err != nil {
+			return err
+		}
 		version = col.HighestVersion.Version
 		if version == "" {
 			return ErrNotFound
 		}
 		log.Printf("galaxy: %s.%s resolved latest version %s", namespace, name, version)
-		// Check cache after resolving latest version
 		if g.storage.Exists(g.filename(namespace, name, version)) {
 			log.Printf("galaxy: %s.%s:%s already cached", namespace, name, version)
 			return nil

@@ -216,6 +216,30 @@ func (a *Amanda) buildCollectionResponse(c *gin.Context, versions []*models.Coll
 func (a *Amanda) Collection(c *gin.Context) {
 	namespace := c.Params.ByName("namespace")
 	name := c.Params.ByName("name")
+
+	if a.galaxy != nil {
+		latestVersion, err := a.galaxy.LatestVersion(namespace, name)
+		if err != nil {
+			if errors.Is(err, galaxy.ErrNotFound) {
+				a.NotFound(c)
+			} else {
+				c.AbortWithError(http.StatusInternalServerError, err)
+			}
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"name":         name,
+			"namespace":    namespace,
+			"versions_url": a.versionsURL(c, namespace, name),
+			"href":         a.collectionURL(c, namespace, name),
+			"highest_version": gin.H{
+				"href":    a.versionURL(c, namespace, name, latestVersion),
+				"version": latestVersion,
+			},
+		})
+		return
+	}
+
 	discovered, ok := a.readOrAbort(c, namespace, name, "")
 	if !ok {
 		return
@@ -247,6 +271,28 @@ func (a *Amanda) Collection(c *gin.Context) {
 func (a *Amanda) Versions(c *gin.Context) {
 	namespace := c.Params.ByName("namespace")
 	name := c.Params.ByName("name")
+
+	if a.galaxy != nil {
+		versionStrings, err := a.galaxy.ListVersions(namespace, name)
+		if err != nil {
+			if errors.Is(err, galaxy.ErrNotFound) {
+				a.NotFound(c)
+			} else {
+				c.AbortWithError(http.StatusInternalServerError, err)
+			}
+			return
+		}
+		var versions []gin.H
+		for _, v := range versionStrings {
+			versions = append(versions, gin.H{
+				"href":    a.versionURL(c, namespace, name, v),
+				"version": v,
+			})
+		}
+		c.JSON(http.StatusOK, gin.H{"data": versions})
+		return
+	}
+
 	discovered, ok := a.readOrAbort(c, namespace, name, "")
 	if !ok {
 		return
