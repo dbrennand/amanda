@@ -313,7 +313,7 @@
                     this.view = 'detail';
                     this.pageTitle = `${col.namespace}.${col.name}`;
 
-                    const res = await fetch(col.versions_url);
+                    const res = await fetch(col.versions_url + '?local=true');
                     const data = await res.json();
                     this.versions = data.data;
 

@@ -311,6 +311,31 @@ func (a *Amanda) Versions(c *gin.Context) {
 	namespace := c.Params.ByName("namespace")
 	name := c.Params.ByName("name")
 
+	if a.galaxy != nil && c.Query("local") != "true" {
+		upstreamVersions, err := a.galaxy.ListVersions(namespace, name)
+		if err != nil {
+			if errors.Is(err, galaxy.ErrNotFound) {
+				a.NotFound(c)
+			} else {
+				c.AbortWithError(http.StatusInternalServerError, err)
+			}
+			return
+		}
+		if len(upstreamVersions) == 0 {
+			a.NotFound(c)
+			return
+		}
+		var versions []gin.H
+		for _, version := range upstreamVersions {
+			versions = append(versions, gin.H{
+				"href":    a.versionURL(c, namespace, name, version),
+				"version": version,
+			})
+		}
+		c.JSON(http.StatusOK, gin.H{"data": versions})
+		return
+	}
+
 	discovered, err := a.storage.Read(namespace, name, "")
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
